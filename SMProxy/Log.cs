@@ -22,7 +22,7 @@ namespace SMProxy
             Settings = settings;
         }
 
-        public void LogPacket(IPacket packet, bool clientToServer)
+        public virtual void LogPacket(IPacket packet, bool clientToServer)
         {
             if (clientToServer && !Settings.LogClient)      return;
             if (!clientToServer && !Settings.LogServer)     return;
@@ -141,7 +141,7 @@ namespace SMProxy
             return newValue.Substring(1);
         }
 
-        public void Write(string p)
+        public virtual void Write(string p)
         {
             Stream.Write(DateTime.Now.ToString("{hh:mm:ss.fff} "));
             Stream.WriteLine(p);

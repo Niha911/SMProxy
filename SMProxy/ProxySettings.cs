@@ -48,5 +48,10 @@ namespace SMProxy
         /// Minecraft.net password
         /// </summary>
         public string Password { get; set; }
+        /// <summary>
+        /// True if the proxy is to authenticate clients with
+        /// minecraft.net.
+        /// </summary>
+        public bool AuthenticateClients { get; set; }
     }
 }

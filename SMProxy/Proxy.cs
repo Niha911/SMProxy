@@ -20,6 +20,7 @@ namespace SMProxy
         public ProxySettings Settings { get; set; }
         public MinecraftStream ClientStream { get; set; }
         public MinecraftStream ServerStream { get; set; }
+        public string PlayerName { get; private set; }
 
         private byte[] ServerSharedKey { get; set; }
         private byte[] ClientSharedKey { get; set; }
@@ -29,6 +30,7 @@ namespace SMProxy
         private EncryptionKeyRequestPacket ClientEncryptionRequest { get; set; }
         private EncryptionKeyResponsePacket ServerEncryptionResponse { get; set; }
         private byte[] ClientVerificationToken { get; set; }
+        private string ClientAuthenticationHash { get; set; }
 
         public event EventHandler ConnectionClosed;
         /// <summary>
@@ -66,9 +68,20 @@ namespace SMProxy
             // TODO: Fallback to raw proxy
             while (true)
             {
-                UpdateServer();
-                UpdateClient();
-                Thread.Sleep(1);
+                try
+                {
+                    UpdateServer();
+                    UpdateClient();
+                    Thread.Sleep(1);
+                }
+                catch
+                {
+                    if (ConnectionClosed != null)
+                        ConnectionClosed(this, null);
+                    try { Client.Close(); } catch { }
+                    try { Server.Close(); } catch { }
+                    return;
+                }
             }
         }
 
@@ -80,14 +93,25 @@ namespace SMProxy
                 Log.LogPacket(packet, true);
 
                 if (packet is EncryptionKeyResponsePacket)
-                    FinializeClientEncryption((EncryptionKeyResponsePacket)packet);
+                {
+                    if (!FinializeClientEncryption((EncryptionKeyResponsePacket)packet))
+                    {
+                        if (ConnectionClosed != null)
+                            ConnectionClosed(this, null);
+                        Worker.Abort();
+                        return;
+                    }
+                }
                 else
                 {
                     var eventArgs = new IncomingPacketEventArgs(packet, true);
                     if (IncomingPacket != null)
                         IncomingPacket(this, eventArgs);
-                    if (!eventArgs.Handled)
-                        packet.WritePacket(ServerStream);
+                    lock (Server)
+                    {
+                        if (!eventArgs.Handled)
+                            packet.WritePacket(ServerStream);
+                    }
                     // We use a BufferedStream to make sure packets get sent in one piece, rather than
                     // a field at a time. Flushing it here sends the assembled packet.
                     ServerStream.Flush();
@@ -101,12 +125,14 @@ namespace SMProxy
                     if (packet is HandshakePacket)
                     {
                         var handshake = (HandshakePacket)packet;
+                        PlayerName = handshake.Username;
                         if (handshake.ProtocolVersion != PacketReader.ProtocolVersion)
                         {
                             Console.WriteLine("Warning! Specified protocol version does not match SMProxy supported version!");
                             Log.Write("Warning! Specified protocol version does not match SMProxy supported version!");
                         }
                     }
+
                 }
             }
         }
@@ -127,9 +153,12 @@ namespace SMProxy
                     var eventArgs = new IncomingPacketEventArgs(packet, false);
                     if (IncomingPacket != null)
                         IncomingPacket(this, eventArgs);
-                    if (!eventArgs.Handled)
-                        packet.WritePacket(ClientStream);
-                    ClientStream.Flush();
+                    lock (Client)
+                    {
+                        if (!eventArgs.Handled)
+                            packet.WritePacket(ClientStream);
+                        ClientStream.Flush();
+                    }
                     if (packet is DisconnectPacket)
                     {
                         Console.WriteLine("Server disconnected: " + ((DisconnectPacket)packet).Reason);
@@ -213,10 +242,15 @@ namespace SMProxy
             // Encode public key as an ASN X509 certificate
             var encodedKey = AsnKeyBuilder.PublicKeyToX509(ServerKey);
 
+            if (Settings.AuthenticateClients)
+                ClientAuthenticationHash = CreateHash();
+            else
+                ClientAuthenticationHash = "-";
+
             ClientEncryptionRequest = new EncryptionKeyRequestPacket
             {
                 VerificationToken = ClientVerificationToken,
-                ServerId = "-",
+                ServerId = ClientAuthenticationHash,
                 PublicKey = encodedKey.GetBytes()
             };
             // Send the client our encryption details and await its response
@@ -224,7 +258,7 @@ namespace SMProxy
             ClientStream.Flush();
         }
 
-        private void FinializeClientEncryption(EncryptionKeyResponsePacket encryptionKeyResponsePacket)
+        private bool FinializeClientEncryption(EncryptionKeyResponsePacket encryptionKeyResponsePacket)
         {
             // Here, we need to prepare everything to enable client<->proxy
             // encryption, but we can't turn it on quite yet.
@@ -238,6 +272,30 @@ namespace SMProxy
                 if (verificationToken[i] != ClientVerificationToken[i])
                     Log.Write("WARNING: Client verification token does not match!");
             }
+            if (Settings.AuthenticateClients)
+            {
+                // Do authentication
+                // Create a hash for session verification
+                SHA1 sha1 = SHA1.Create();
+                AsnKeyBuilder.AsnMessage encodedKey = AsnKeyBuilder.PublicKeyToX509(ServerKey);
+                byte[] shaData = Encoding.UTF8.GetBytes(ClientAuthenticationHash)
+                    .Concat(ClientSharedKey)
+                    .Concat(encodedKey.GetBytes()).ToArray();
+                string hash = Cryptography.JavaHexDigest(shaData);
+
+                var client = new WebClient();
+                var result = client.DownloadString(string.Format("http://session.minecraft.net/game/checkserver.jsp?user={0}&serverId={1}",
+                    PlayerName, hash));
+                if (result != "YES")
+                {
+                    Log.Write("Failed to authenticate " + PlayerName + "!");
+                    new DisconnectPacket("Failed to authenticate!").WritePacket(ServerStream);
+                    new DisconnectPacket("Failed to authenticate!").WritePacket(ClientStream);
+                    ServerStream.Flush();
+                    ClientStream.Flush();
+                    return false;
+                }
+            }
 
             // Send unencrypted response
             ServerEncryptionResponse.WritePacket(ServerStream);
@@ -245,6 +303,16 @@ namespace SMProxy
 
             // We wait for the server to respond, then set up encryption
             // for both sides of the connection.
+            return true;
+        }
+
+        private static string CreateHash()
+        {
+            byte[] hash = BitConverter.GetBytes(new Random().Next());
+            string response = "";
+            foreach (byte b in hash)
+                response += b.ToString("x2");
+            return response;
         }
 
         private void FinializeServerEncryption(EncryptionKeyResponsePacket encryptionKeyResponsePacket)

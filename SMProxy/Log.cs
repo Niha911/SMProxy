@@ -49,6 +49,8 @@ namespace SMProxy
             foreach (var field in fields)
             {
                 var name = field.Name;
+                if (field.Name == "PacketId")
+                    continue;
                 name = AddSpaces(name);
                 var fValue = field.GetValue(packet);
 
@@ -71,6 +73,8 @@ namespace SMProxy
                         Stream.Write(string.Format("{0}, ", item.ToString()));
                     Stream.WriteLine();
                 }
+                else if (fValue is string)
+                    Stream.Write(": \"" + fValue + "\"\n");
                 else
                     Stream.Write(": " + fValue + "\n");
             }

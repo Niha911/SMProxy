@@ -47,6 +47,9 @@ namespace SMProxy
                         case "--local-endpoint":
                             ProxySettings.LocalEndPoint = ParseEndPoint(args[++i]);
                             break;
+                        case "--remote-endpoint":
+                            ProxySettings.RemoteEndPoint = ParseEndPoint(args[++i], 25565);
+                            break;
                         case "--filter":
                             ProxySettings.PacketFilter = ParseFilter(args[++i]);
                             break;
@@ -90,9 +93,15 @@ namespace SMProxy
                 else
                 {
                     if (!remoteSet)
-                        ProxySettings.RemoteEndPoint = ParseEndPoint(arg);
+                    {
+                        ProxySettings.RemoteEndPoint = ParseEndPoint(arg, 25565);
+                        remoteSet = true;
+                    }
                     else if (!localSet)
+                    {
                         ProxySettings.LocalEndPoint = ParseEndPoint(arg);
+                        localSet = true;
+                    }
                     else
                     {
                         var eventArgs = new UnrecognizedArgumentEventArgs
@@ -179,7 +188,7 @@ namespace SMProxy
             return result;
         }
 
-        private static IPEndPoint ParseEndPoint(string arg)
+        private static IPEndPoint ParseEndPoint(string arg, int defaultPort = 25564)
         {
             IPAddress address;
             int port;
@@ -192,10 +201,10 @@ namespace SMProxy
                 return new IPEndPoint(address, int.Parse(parts[1]));
             }
             if (IPAddress.TryParse(arg, out address))
-                return new IPEndPoint(address, 25564);
+                return new IPEndPoint(address, defaultPort);
             if (int.TryParse(arg, out port))
                 return new IPEndPoint(IPAddress.Loopback, port);
-            return new IPEndPoint(Resolve(arg), 25564);
+            return new IPEndPoint(Resolve(arg), defaultPort);
         }
 
         private static IPAddress Resolve(string arg)

@@ -111,10 +111,10 @@ namespace SMProxy
                     {
                         if (!eventArgs.Handled)
                             packet.WritePacket(ServerStream);
+                        // We use a BufferedStream to make sure packets get sent in one piece, rather than
+                        // a field at a time. Flushing it here sends the assembled packet.
+                        ServerStream.Flush();
                     }
-                    // We use a BufferedStream to make sure packets get sent in one piece, rather than
-                    // a field at a time. Flushing it here sends the assembled packet.
-                    ServerStream.Flush();
                     if (packet is DisconnectPacket)
                     {
                         Console.WriteLine("Client disconnected: " + ((DisconnectPacket)packet).Reason);

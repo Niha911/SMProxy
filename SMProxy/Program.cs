@@ -44,6 +44,9 @@ namespace SMProxy
                 {
                     switch (arg)
                     {
+                        case "--authenticate-clients":
+                            ProxySettings.AuthenticateClients = true;
+                            break;
                         case "--local-endpoint":
                             ProxySettings.LocalEndPoint = ParseEndPoint(args[++i]);
                             break;
@@ -222,6 +225,7 @@ namespace SMProxy
             Console.WriteLine("Usage: SMProxy.exe [options...] [remote endpoint] [local endpoint]");
             Console.WriteLine("Default remote: 127.0.0.1:25565; Default local: 127.0.0.1:25564");
             Console.WriteLine("Options:");
+            Console.WriteLine("--authenticate-clients: Enables authentiation, instead of allowing the server to do so");
             Console.WriteLine("--local-endpoint [endpoint]: Specify the local endpoint");
             Console.WriteLine("--filter [packets...]: A hexadecimal, comma-delimited list of packets to log");
             Console.WriteLine("--omit-client: Omits client->server packets from the log");

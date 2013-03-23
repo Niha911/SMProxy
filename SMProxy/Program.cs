@@ -9,6 +9,7 @@ using System.Text;
 using System.Globalization;
 using SMProxy.Plugins;
 using SMProxy.Events;
+using Craft.Net.Client;
 
 namespace SMProxy
 {
@@ -128,7 +129,7 @@ namespace SMProxy
             if (ProxySettings.Password == null)
             {
                 // Grab lastlogin if possible
-                var login = Minecraft.GetLastLogin();
+                var login = LastLogin.GetLastLogin();
                 if (login != null)
                 {
                     if (ProxySettings.Username == null)

@@ -8,6 +8,7 @@ using System.Threading;
 using System.Net;
 using SMProxy.Events;
 using Craft.Net;
+using Craft.Net.Client;
 
 namespace SMProxy
 {
@@ -74,8 +75,10 @@ namespace SMProxy
                     UpdateClient();
                     Thread.Sleep(1);
                 }
-                catch
+                catch (Exception e)
                 {
+					Log.Write ("Unhandled exception in internal SMProxy tick: " + Environment.NewLine + 
+					           e.ToString());
                     if (ConnectionClosed != null)
                         ConnectionClosed(this, null);
                     try { Client.Close(); } catch { }
@@ -209,9 +212,9 @@ namespace SMProxy
             // Authenticate with minecraft.net if need be
             if (packet.ServerId != "-")
             {
-                var session = Minecraft.DoLogin(Settings.Username, Settings.Password);
-                if (session != null && string.IsNullOrEmpty(session.Error))
-                {
+				try
+				{
+                	var session = Session.DoLogin(Settings.Username, Settings.Password);
                     // Generate session hash
                     byte[] hashData = Encoding.ASCII.GetBytes(packet.ServerId)
                         .Concat(ServerSharedKey)
@@ -220,17 +223,14 @@ namespace SMProxy
                     var webClient = new WebClient();
                     string result = webClient.DownloadString("http://session.minecraft.net/game/joinserver.jsp?user=" +
                         Uri.EscapeUriString(session.Username) +
-                        "&sessionId=" + Uri.EscapeUriString(session.SessionID) +
+                        "&sessionId=" + Uri.EscapeUriString(session.SessionId) +
                         "&serverId=" + Uri.EscapeUriString(hash));
                     if (result != "OK")
                         Console.WriteLine("Warning: Unable to login as user " + Settings.Username + ": " + result);
                 }
-                else
+                catch (Exception e)
                 {
-                    if (session == null)
-                        Console.WriteLine("Warning: Unable to login as user " + Settings.Username + ".");
-                    else
-                        Console.WriteLine("Warning: Unable to login as user " + Settings.Username + ": " + session.Error);
+                    Console.WriteLine("Warning: Unable to login as user " + Settings.Username + ": " + e.Message);
                 }
             }
 
@@ -276,7 +276,6 @@ namespace SMProxy
             {
                 // Do authentication
                 // Create a hash for session verification
-                SHA1 sha1 = SHA1.Create();
                 AsnKeyBuilder.AsnMessage encodedKey = AsnKeyBuilder.PublicKeyToX509(ServerKey);
                 byte[] shaData = Encoding.UTF8.GetBytes(ClientAuthenticationHash)
                     .Concat(ClientSharedKey)

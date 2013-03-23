@@ -25,6 +25,12 @@ them to `127.0.0.1:25565`. It will create log files with the following file name
 
 ...in the working directory, where the letters represent the date and time the log was created.
 
+### HTTPS Certificates in Mono (Linux/Mac)
+
+If you run SMProxy with Mono, you should be aware that it suffers from the same problem Craft.Net does when
+authenticating with minecraft.net: Mono doesn't trust any certificates at all by default. If you want to work with
+online mode servers on Mono, run `mozroots --import --sync` to trust all the root certs Mozilla does for Firefox.
+
 ### Command Line Parameters
 
 The more advanced use is like so:

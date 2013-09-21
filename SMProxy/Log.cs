@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using Craft.Net;
+using Craft.Net.Networking;
+using Craft.Net.Common;
 
 namespace SMProxy
 {

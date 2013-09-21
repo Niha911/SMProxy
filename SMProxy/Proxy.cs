@@ -7,8 +7,9 @@ using System.Text;
 using System.Threading;
 using System.Net;
 using SMProxy.Events;
-using Craft.Net;
+using Craft.Net.Common;
 using Craft.Net.Client;
+using Craft.Net.Networking;
 
 namespace SMProxy
 {
@@ -222,7 +223,7 @@ namespace SMProxy
                     var hash = Cryptography.JavaHexDigest(hashData);
                     var webClient = new WebClient();
                     string result = webClient.DownloadString("http://session.minecraft.net/game/joinserver.jsp?user=" +
-                        Uri.EscapeUriString(session.Username) +
+                        Uri.EscapeUriString(session.UserName) +
                         "&sessionId=" + Uri.EscapeUriString(session.SessionId) +
                         "&serverId=" + Uri.EscapeUriString(hash));
                     if (result != "OK")

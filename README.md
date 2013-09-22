@@ -47,6 +47,10 @@ For example, to open a proxy to example.com:12345, and to listen on port 54321 l
 
 The available options are described below:
 
+**--authenticate-clients**: This will cause SMProxy to authenticate connection attempts with minecraft.net. This
+  is useful if you're running a server behind SMProxy - you can set the server to offline mode and allow SMProxy
+  to handle authentication.
+
 **--local-endpoint [endpoint]**: You may explicitly state the endpoint with this, in the same manner that you'd
   use to include it as the last parameter.
 

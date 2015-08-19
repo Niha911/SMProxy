@@ -25,62 +25,7 @@ namespace SMProxy
 
         public virtual void LogPacket(IPacket packet, bool clientToServer)
         {
-            if (clientToServer && !Settings.LogClient)      return;
-            if (!clientToServer && !Settings.LogServer)     return;
-            if (!Settings.PacketFilter.Contains(packet.Id)) return;
-            var type = packet.GetType();
-            var fields = type.GetFields();
-            // Log time, direction, name
-            Stream.Write(DateTime.Now.ToString("{hh:mm:ss.fff} "));
-            if (clientToServer)
-                Stream.Write("[CLIENT->SERVER] ");
-            else
-                Stream.Write("[SERVER->CLIENT] ");
-            Stream.Write(FormatPacketName(type.Name));
-            Stream.Write(" (0x"); Stream.Write(packet.Id.ToString("X2")); Stream.Write(")");
-            Stream.WriteLine();
-
-            // Log raw data
-            MemoryStream.Seek(0, SeekOrigin.Begin);
-            MemoryStream.SetLength(0);
-            packet.WritePacket(MinecraftStream);
-            Stream.Write(DumpArrayPretty(MemoryStream.GetBuffer().Take((int)MemoryStream.Length).ToArray()));
-
-            // Log fields
-            foreach (var field in fields)
-            {
-                var name = field.Name;
-                if (field.Name == "PacketId")
-                    continue;
-                name = AddSpaces(name);
-                var fValue = field.GetValue(packet);
-
-                if (!(fValue is Array))
-                    Stream.Write(string.Format(" {0} ({1})", name, field.FieldType.Name));
-                else
-                {
-                    var array = fValue as Array;
-                    Stream.Write(string.Format(" {0} ({1}[{2}])", name, 
-                        array.GetType().GetElementType().Name, array.Length));
-                }
-
-                if (fValue is byte[])
-                    Stream.Write(": " + DumpArray(fValue as byte[]) + "\n");
-                else if (fValue is Array)
-                {
-                    Stream.Write(": ");
-                    var array = fValue as Array;
-                    foreach (var item in array)
-                        Stream.Write(string.Format("{0}, ", item.ToString()));
-                    Stream.WriteLine();
-                }
-                else if (fValue is string)
-                    Stream.Write(": \"" + fValue + "\"\n");
-                else
-                    Stream.Write(": " + fValue + "\n");
-            }
-            Stream.WriteLine();
-            Stream.Flush();
+            Stream.Write(PacketLogger.LogPacket(packet, clientToServer ? Craft.Net.PacketDirection.Serverbound : Craft.Net.PacketDirection.Clientbound));
         }
 
         private string FormatPacketName(string name)

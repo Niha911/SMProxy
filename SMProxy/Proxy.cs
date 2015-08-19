@@ -20,8 +20,8 @@ namespace SMProxy
         public NetworkStream Server { get; set; }
         public Log Log { get; set; }
         public ProxySettings Settings { get; set; }
-        public MinecraftStream ClientStream { get; set; }
-        public MinecraftStream ServerStream { get; set; }
+        public NetworkManager ClientStream { get; set; }
+        public NetworkManager ServerStream { get; set; }
         public string PlayerName { get; private set; }
 
         private byte[] ServerSharedKey { get; set; }
@@ -47,8 +47,8 @@ namespace SMProxy
             Client = client;
             Server = server;
             Log = log;
-            ClientStream = new MinecraftStream(new BufferedStream(Client));
-            ServerStream = new MinecraftStream(new BufferedStream(Server));
+            ClientStream = new NetworkManager(Client); //ClientStream = new MinecraftStream(new BufferedStream(Client));
+            ServerStream = new NetworkManager(Server); //ServerStream = new MinecraftStream(new BufferedStream(Server));
             CryptoServiceProvider = new RSACryptoServiceProvider(1024);
             ServerKey = CryptoServiceProvider.ExportParameters(true);
             Settings = settings;
@@ -93,7 +93,7 @@ namespace SMProxy
         {
             while (Client.DataAvailable)
             {
-                var packet = PacketReader.ReadPacket(ClientStream);
+                var packet = ClientStream.ReadPacket(Craft.Net.PacketDirection.Serverbound);
                 Log.LogPacket(packet, true);
 
                 if (packet is EncryptionKeyResponsePacket)
@@ -114,10 +114,10 @@ namespace SMProxy
                     lock (Server)
                     {
                         if (!eventArgs.Handled)
-                            packet.WritePacket(ServerStream);
+                            ServerStream.WritePacket(packet, Craft.Net.PacketDirection.Serverbound);
                         // We use a BufferedStream to make sure packets get sent in one piece, rather than
                         // a field at a time. Flushing it here sends the assembled packet.
-                        ServerStream.Flush();
+                        Server.Flush();
                     }
                     if (packet is DisconnectPacket)
                     {
@@ -125,16 +125,6 @@ namespace SMProxy
                         if (ConnectionClosed != null)
                             ConnectionClosed(this, null);
                         Worker.Abort();
-                    }
-                    if (packet is HandshakePacket)
-                    {
-                        var handshake = (HandshakePacket)packet;
-                        PlayerName = handshake.Username;
-                        if (handshake.ProtocolVersion != PacketReader.ProtocolVersion)
-                        {
-                            Console.WriteLine("Warning! Specified protocol version does not match SMProxy supported version!");
-                            Log.Write("Warning! Specified protocol version does not match SMProxy supported version!");
-                        }
                     }
 
                 }
@@ -145,7 +135,7 @@ namespace SMProxy
         {
             while (Server.DataAvailable)
             {
-                var packet = PacketReader.ReadPacket(ServerStream);
+                var packet = ServerStream.ReadPacket(Craft.Net.PacketDirection.Clientbound);
                 Log.LogPacket(packet, false);
 
                 if (packet is EncryptionKeyRequestPacket)
@@ -160,8 +150,8 @@ namespace SMProxy
                     lock (Client)
                     {
                         if (!eventArgs.Handled)
-                            packet.WritePacket(ClientStream);
-                        ClientStream.Flush();
+                            ClientStream.WritePacket(packet, Craft.Net.PacketDirection.Clientbound);
+                        Client.Flush();
                     }
                     if (packet is DisconnectPacket)
                     {
@@ -255,8 +245,8 @@ namespace SMProxy
                 PublicKey = encodedKey.GetBytes()
             };
             // Send the client our encryption details and await its response
-            ClientEncryptionRequest.WritePacket(ClientStream);
-            ClientStream.Flush();
+            ClientStream.WritePacket(ClientEncryptionRequest, Craft.Net.PacketDirection.Clientbound);
+            Client.Flush();
         }
 
         private bool FinializeClientEncryption(EncryptionKeyResponsePacket encryptionKeyResponsePacket)
@@ -289,17 +279,17 @@ namespace SMProxy
                 if (result != "YES")
                 {
                     Log.Write("Failed to authenticate " + PlayerName + "!");
-                    new DisconnectPacket("Failed to authenticate!").WritePacket(ServerStream);
-                    new DisconnectPacket("Failed to authenticate!").WritePacket(ClientStream);
-                    ServerStream.Flush();
-                    ClientStream.Flush();
+                    ServerStream.WritePacket(new DisconnectPacket("Failed to authenticate!"), Craft.Net.PacketDirection.Serverbound);
+                    ClientStream.WritePacket(new DisconnectPacket("Failed to authenticate!"), Craft.Net.PacketDirection.Clientbound);
+                    Server.Flush();
+                    Client.Flush();
                     return false;
                 }
             }
 
             // Send unencrypted response
-            ServerEncryptionResponse.WritePacket(ServerStream);
-            ServerStream.Flush();
+            ServerStream.WritePacket(ServerEncryptionResponse, Craft.Net.PacketDirection.Serverbound);
+            Server.Flush();
 
             // We wait for the server to respond, then set up encryption
             // for both sides of the connection.
@@ -322,7 +312,7 @@ namespace SMProxy
             // already completed the crypto handshake with the client.
 
             // Wrap the server stream in a crypto stream
-            ServerStream = new MinecraftStream(new BufferedStream(new AesStream(Server, ServerSharedKey)));
+            ServerStream = new NetworkManager(new AesStream(Server, ServerSharedKey));
             Log.Write("Encrypted server connection established.");
 
             // Write the response. This is the first encrypted packet
@@ -334,11 +324,11 @@ namespace SMProxy
                 SharedSecret = new byte[0],
                 VerificationToken = new byte[0]
             };
-            response.WritePacket(ClientStream);
-            ClientStream.Flush();
+            ClientStream.WritePacket(response, Craft.Net.PacketDirection.Clientbound);
+            Client.Flush();
 
             // Wrap the client stream in a crypto stream
-            ClientStream = new MinecraftStream(new BufferedStream(new AesStream(Client, ClientSharedKey)));
+            ClientStream = new NetworkManager(new AesStream(Client, ClientSharedKey));
             Log.Write("Encrypted client connection established.");
 
             // And now we're done with encryption and everything can

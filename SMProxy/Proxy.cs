@@ -140,8 +140,6 @@ namespace SMProxy
 
                 if (packet is EncryptionKeyRequestPacket)
                     InitializeEncryption((EncryptionKeyRequestPacket)packet);
-                else if (packet is EncryptionKeyResponsePacket)
-                    FinializeServerEncryption((EncryptionKeyResponsePacket)packet);
                 else
                 {
                     var eventArgs = new IncomingPacketEventArgs(packet, false);
@@ -218,6 +216,7 @@ namespace SMProxy
                         "&serverId=" + Uri.EscapeUriString(hash));
                     if (result != "OK")
                         Console.WriteLine("Warning: Unable to login as user " + Settings.Username + ": " + result);
+                    Console.WriteLine("(Session ID is {0})", session.SessionId);
                 }
                 catch (Exception e)
                 {
@@ -244,9 +243,7 @@ namespace SMProxy
                 ServerId = ClientAuthenticationHash,
                 PublicKey = encodedKey.GetBytes()
             };
-            // Send the client our encryption details and await its response
-            ClientStream.WritePacket(ClientEncryptionRequest, Craft.Net.PacketDirection.Clientbound);
-            Client.Flush();
+            FinializeClientEncryption(new EncryptionKeyResponsePacket());
         }
 
         private bool FinializeClientEncryption(EncryptionKeyResponsePacket encryptionKeyResponsePacket)
@@ -254,15 +251,6 @@ namespace SMProxy
             // Here, we need to prepare everything to enable client<->proxy
             // encryption, but we can't turn it on quite yet.
 
-            // Decrypt shared secret
-            ClientSharedKey = CryptoServiceProvider.Decrypt(encryptionKeyResponsePacket.SharedSecret, false);
-            var verificationToken = CryptoServiceProvider.Decrypt(encryptionKeyResponsePacket.VerificationToken, false);
-            // Check verification token
-            for (int i = 0; i < verificationToken.Length; i++)
-            {
-                if (verificationToken[i] != ClientVerificationToken[i])
-                    Log.Write("WARNING: Client verification token does not match!");
-            }
             if (Settings.AuthenticateClients)
             {
                 // Do authentication
@@ -293,6 +281,7 @@ namespace SMProxy
 
             // We wait for the server to respond, then set up encryption
             // for both sides of the connection.
+            ServerStream.BaseStream = new AesStream(Server, ServerSharedKey);
             return true;
         }
 
